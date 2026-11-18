@@ -41,7 +41,7 @@ function renderChapter(){
   verses.forEach((txt,i)=>{
     const div=document.createElement('div');
     div.className='verse';
-    const verseNo=`${idx+1}:${i+1}`;
+    const verseNo=`${i+1}`;
     div.innerHTML=`<span>${verseNo} ${txt}</span>
                  <span class="noteBtn" onclick="toggleNote(this,'${verseNo}')">✏️</span>
                  <div class="noteBox" id="note-${verseNo.replace(':','-')}">
