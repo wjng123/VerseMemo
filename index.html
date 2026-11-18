@@ -23,7 +23,7 @@
 <div id="verseList"></div>
 <script>
 let bible=null;
-fetch('genesis.json')
+fetch('./genesis.json')
   .then(r=>r.json())
   .then(data=>{bible=data; init();})
   .catch(()=>alert('genesis.json 를 찾을 수 없습니다.'));
