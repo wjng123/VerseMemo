@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>VerseMemo – Genesis</title>
+<style>
+  body {font-family:Arial,Helvetica,sans-serif; margin:0; display:flex; flex-direction:column; height:100vh;}
+  header {background:#4A90E2; color:#fff; padding:0.5rem 1rem; display:flex; align-items:center;}
+  header select {margin-left:1rem; padding:0.2rem;}
+  #verseList {flex:1; overflow:auto; padding:1rem;}
+  .verse {position:relative; margin-bottom:0.8rem; line-height:1.4;}
+  .noteBtn {position:absolute; right:0; top:0; cursor:pointer; color:#4A90E2;}
+  .noteBox {display:none; margin-top:0.4rem; border:1px solid #ddd; padding:0.4rem;}
+  .noteBox textarea {width:100%; height:3rem;}
+  .noteBox button {margin-top:0.2rem; padding:0.2rem 0.6rem;}
+</style>
+</head>
+<body>
+<header>
+  <strong>창세기</strong>
+  <select id="chapterSelect"></select>
+</header>
+<div id="verseList"></div>
+<script>
+let bible=null;
+fetch('genesis.json')
+  .then(r=>r.json())
+  .then(data=>{bible=data; init();})
+  .catch(()=>alert('genesis.json 를 찾을 수 없습니다.'));
+function init(){
+  const sel=document.getElementById('chapterSelect');
+  bible.chapters.forEach((c,i)=>{sel.append(new Option(`第 ${i+1} 장`, i));});
+  sel.addEventListener('change',renderChapter);
+  renderChapter();
+}
+function renderChapter(){
+  const idx=document.getElementById('chapterSelect').value;
+  const verses=bible.chapters[idx];
+  const list=document.getElementById('verseList');
+  list.innerHTML='';
+  verses.forEach((txt,i)=>{
+    const div=document.createElement('div');
+    div.className='verse';
+    const verseNo=`${idx+1}:${i+1}`;
+    div.innerHTML=`<span>${verseNo} ${txt}</span>
+                 <span class="noteBtn" onclick="toggleNote(this,'${verseNo}')">✏️</span>
+                 <div class="noteBox" id="note-${verseNo.replace(':','-')}">
+                   <div class="savedNotes"></div>
+                   <textarea placeholder="새 메모 입력"></textarea>
+                   <button onclick="saveNote('${verseNo}')">저장</button>
+                 </div>`;
+    list.appendChild(div);
+    loadNotes(verseNo);
+  });
+}
+function toggleNote(btn,verse){
+  const box=btn.nextElementSibling;box.style.display=box.style.display==='block'?'none':'block';
+}
+function saveNote(verse){
+  const box=document.getElementById('note-'+verse.replace(':','-'));
+  const txt=box.querySelector('textarea').value.trim();
+  if(!txt) return;
+  const key=`note-${verse}`;
+  const existing=JSON.parse(localStorage.getItem(key)||'[]');
+  const now=new Date().toLocaleString();
+  existing.push({time:now,text:txt});
+  localStorage.setItem(key,JSON.stringify(existing));
+  box.querySelector('textarea').value='';
+  renderSaved(verse);
+}
+function loadNotes(verse){renderSaved(verse);}
+function renderSaved(verse){
+  const key=`note-${verse}`;
+  const notes=JSON.parse(localStorage.getItem(key)||'[]');
+  const div=document.getElementById('note-'+verse.replace(':','-')).querySelector('.savedNotes');
+  div.innerHTML=notes.map(n=>`<div><small>${n.time}</small> ${n.text}</div>`).join('');
+}
+</script>
+</body>
+</html>
