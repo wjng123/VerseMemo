@@ -5,9 +5,43 @@
 <title>VerseMemo – Genesis</title>
 <style>
   body {font-family:Arial,Helvetica,sans-serif; margin:0; display:flex; flex-direction:column; height:100vh;}
-  header {background:#4A90E2; color:#fff; padding:0.5rem 1rem; display:flex; align-items:center;}
+  /* header removed */
   header select {margin-left:1rem; padding:0.2rem;}
-  #verseList {flex:1; overflow:auto; padding:1rem;}
+  #verseList {flex:1; overflow:auto; padding:1rem; margin-left:190px;}
+  #sideMenu {
+    position:fixed;
+    left:0;
+    top:2rem;
+    height:100%;
+    width:180px;
+    background:rgba(255,255,255,0.2);
+    padding:1rem;
+    box-sizing:border-box;
+  }
+  #logo {
+    position:fixed;
+    top:0;
+    left:0;
+    padding:0.5rem 1rem;
+    font-weight:bold;
+    font-size:1.2rem;
+    background:transparent;
+    z-index:1000;
+  }
+  .menuItem {margin-bottom:1rem;}
+  .addBtn {
+    font-size:1.1rem;
+    font-weight:500;
+    background:transparent;
+    border:none;
+    color:#000;
+    cursor:pointer;
+    padding:0;
+    line-height:1;
+  }
+}
+
+
   .verse {position:relative; margin-bottom:0.8rem; line-height:1.4;}
   .noteBtn {position:absolute; right:0; top:0; cursor:pointer; color:#4A90E2;}
   .noteBox {display:none; margin-top:0.4rem; border:1px solid #ddd; padding:0.4rem;}
@@ -16,14 +50,17 @@
 </style>
 </head>
 <body>
-<header>
-  <strong>창세기</strong>
-  <select id="chapterSelect"></select>
-</header>
+<div id="logo">VerseMemo</div>
+<nav id="sideMenu">
+  <div class="menuItem"><span>QT</span> <button class="addBtn" data-category="QT">+</button></div>
+  <div class="menuItem"><span>설교메모</span> <button class="addBtn" data-category="설교메모">+</button></div>
+</nav>
+
 <div id="verseList"></div>
 <script>
 let bible=null;
-fetch('./genesis.json')
+let lastVerse = null;
+fetch('genesis.json')
   .then(r=>r.json())
   .then(data=>{bible=data; init();})
   .catch(()=>alert('genesis.json 를 찾을 수 없습니다.'));
@@ -32,6 +69,31 @@ function init(){
   bible.chapters.forEach((c,i)=>{sel.append(new Option(`第 ${i+1} 장`, i));});
   sel.addEventListener('change',renderChapter);
   renderChapter();
+  // Set up category add buttons
+  document.querySelectorAll('.addBtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!lastVerse) { alert('먼저 절을 선택하세요.'); return; }
+      const category = btn.dataset.category;
+      // Remove existing input box if present
+      const existing = btn.parentElement.querySelector('.categoryBox');
+      if (existing) { existing.remove(); return; }
+      const box = document.createElement('div');
+      box.className = 'categoryBox';
+      box.innerHTML = `
+        <textarea placeholder="${category} 메모 입력" style="width:100%;height:3rem;"></textarea>
+        <button>저장</button>`;
+      btn.parentElement.appendChild(box);
+      const textarea = box.querySelector('textarea');
+      const saveBtn = box.querySelector('button');
+      saveBtn.addEventListener('click', () => {
+        const txt = textarea.value.trim();
+        if (txt) {
+          saveCategoryNote(lastVerse, category, txt);
+          box.remove();
+        }
+      });
+    });
+  });
 }
 function renderChapter(){
   const idx=document.getElementById('chapterSelect').value;
@@ -41,19 +103,22 @@ function renderChapter(){
   verses.forEach((txt,i)=>{
     const div=document.createElement('div');
     div.className='verse';
-    const verseNo=`${i+1}`;
+    const verseNo=`${i+1}`; // only verse number
     div.innerHTML=`<span>${verseNo} ${txt}</span>
                  <span class="noteBtn" onclick="toggleNote(this,'${verseNo}')">✏️</span>
                  <div class="noteBox" id="note-${verseNo.replace(':','-')}">
                    <div class="savedNotes"></div>
                    <textarea placeholder="새 메모 입력"></textarea>
                    <button onclick="saveNote('${verseNo}')">저장</button>
-                 </div>`;
+                 </div>
+                 <div class="categoryNotes" id="cat-${verseNo}"></div>`;
     list.appendChild(div);
     loadNotes(verseNo);
+    lastVerse = verseNo; // track last rendered verse for add buttons
   });
 }
 function toggleNote(btn,verse){
+  lastVerse = verse;
   const box=btn.nextElementSibling;box.style.display=box.style.display==='block'?'none':'block';
 }
 function saveNote(verse){
@@ -75,6 +140,34 @@ function renderSaved(verse){
   const div=document.getElementById('note-'+verse.replace(':','-')).querySelector('.savedNotes');
   div.innerHTML=notes.map(n=>`<div><small>${n.time}</small> ${n.text}</div>`).join('');
 }
+function saveCategoryNote(verse, category, text) {
+  const key = `note-${verse}-${category}`;
+  const existing = JSON.parse(localStorage.getItem(key) || '[]');
+  const now = new Date().toLocaleString();
+  existing.push({time: now, text});
+  localStorage.setItem(key, JSON.stringify(existing));
+  renderCategoryNotes(verse);
+}
+function loadCategoryNotes(verse) {
+  renderCategoryNotes(verse);
+}
+function renderCategoryNotes(verse) {
+  const container = document.getElementById('cat-' + verse);
+  if (!container) return;
+  const categories = ['QT', '설교메모'];
+  container.innerHTML = categories.map(cat => {
+    const key = `note-${verse}-${cat}`;
+    const notes = JSON.parse(localStorage.getItem(key) || '[]');
+    if (notes.length===0) return '';
+    return `<div class="cat-${cat}"><strong>${cat}:</strong> ` + notes.map(n => `<span><small>${n.time}</small> ${n.text}</span>`).join('<br>') + `</div>`;
+  }).join('');
+}
+// Hook into loadNotes to also load category notes
+const originalLoadNotes = loadNotes;
+loadNotes = function(verse) {
+  originalLoadNotes(verse);
+  loadCategoryNotes(verse);
+};
 </script>
 </body>
 </html>
