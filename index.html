@@ -29,10 +29,13 @@
     background:transparent;
     z-index:1000;
   }
-  .menuItem {margin-bottom:1rem;}
+  .menuItem {display:grid; grid-template-columns:minmax(0, 1fr) auto; align-content:start; align-items:center; margin-bottom:1rem;}
+  .menuItem > .menuNotes {grid-column:1 / -1;}
   #sideMenu > .menuItem:first-child {min-height:max(0px, calc(25vh - 4rem));}
   .menuNotes {list-style:none; margin:0.45rem 0 0; padding:0;}
-  .menuNotes li {background:#f4f6f8; border-radius:0.3rem; margin-top:0.35rem; padding:0.45rem; white-space:pre-wrap; overflow-wrap:anywhere;}
+  .menuNotes li {margin-top:0.35rem;}
+  .menuNotes button {display:block; width:100%; padding:0.45rem; border:0; border-radius:0.3rem; background:#f4f6f8; color:#222; text-align:left; font:inherit; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;}
+  .menuNotes button:hover {background:#e6ebf0;}
   .addBtn {
     font-size:1.1rem;
     font-weight:500;
@@ -44,7 +47,7 @@
     line-height:1;
   }
 
-  #categoryDialog {
+  #categoryDialog, #readNoteDialog, #wordNoteDialog {
     box-sizing:border-box;
     width:min(calc(100vw - 2rem), max(50vw, 22rem));
     height:min(calc(100dvh - 2rem), max(50dvh, 16rem));
@@ -52,18 +55,28 @@
     border:1px solid #ddd;
     border-radius:0.5rem;
   }
-  #categoryDialog::backdrop {background:rgba(0,0,0,0.35);}
+  #categoryDialog::backdrop, #readNoteDialog::backdrop, #wordNoteDialog::backdrop {background:rgba(0,0,0,0.35);}
   #categoryForm {display:flex; flex-direction:column; height:100%;}
-  #categoryTitle {margin:0 0 0.75rem;}
+  #categoryTitle, #readNoteTitle {margin:0 0 0.75rem; overflow-wrap:anywhere;}
+  #categoryNoteTitle {margin-bottom:0.5rem; padding:0.4rem; font:inherit;}
+  #readNoteDialog form {display:flex; flex-direction:column; height:100%;}
+  #readNoteTitle {max-height:30%; overflow:auto;}
+  #readNoteText {flex:1; min-height:0; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere;}
   #categoryForm textarea {flex:1; min-height:0; width:100%; box-sizing:border-box; resize:none; font:inherit;}
   .dialogActions {display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.75rem;}
   .savedNotes div, .categoryNotes div {white-space:pre-wrap; overflow-wrap:anywhere;}
   .verse {position:relative; margin-bottom:0.8rem; line-height:1.4;}
   .verseNumber {position:relative; top:-0.3em; vertical-align:baseline; font-size:0.72em; line-height:0;}
-  .noteBtn {position:absolute; right:0; top:0; cursor:pointer; color:#4A90E2;}
-  .noteBox {display:none; margin-top:0.4rem; border:1px solid #ddd; padding:0.4rem;}
-  .noteBox textarea {width:100%; height:3rem;}
-  .noteBox button {margin-top:0.2rem; padding:0.2rem 0.6rem;}
+  .verseWord {display:inline-block; white-space:nowrap;}
+  .wordButton, .wordInfo {border:0; padding:0; background:none; color:inherit; font:inherit; cursor:pointer;}
+  .wordButton:hover {text-decoration:underline;}
+  .wordInfo {font-size:0.8em; margin-left:0.15em; color:#387dc1; position:relative; top:0.2em; line-height:1;}
+  .legacyVerseNotes {font-size:0.9em; margin-top:0.25rem;}
+  .legacyVerseNotes summary {cursor:pointer;}
+  #wordNoteDialog form {display:flex; flex-direction:column; height:100%;}
+  #wordNoteTitle {margin:0 0 0.75rem; overflow-wrap:anywhere;}
+  #wordNoteText {flex:1; min-height:0; resize:none; font:inherit;}
+  #wordNotePreview {flex:1; min-height:0; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere;}
 </style>
 </head>
 <body>
@@ -77,7 +90,8 @@
 <dialog id="categoryDialog" aria-labelledby="categoryTitle">
   <form id="categoryForm">
     <h2 id="categoryTitle"></h2>
-    <textarea id="categoryText" aria-label="메모 내용" required autofocus></textarea>
+    <input id="categoryNoteTitle" type="text" placeholder="제목" aria-label="메모 제목" required autofocus>
+    <textarea id="categoryText" placeholder="내용" aria-label="메모 내용" required></textarea>
     <div class="dialogActions">
       <button type="button" id="cancelCategoryNote">취소</button>
       <button type="submit">저장</button>
@@ -86,9 +100,36 @@
 </dialog>
 
 
+<dialog id="readNoteDialog" aria-labelledby="readNoteTitle">
+  <form method="dialog">
+    <h2 id="readNoteTitle"></h2>
+    <div id="readNoteText" tabindex="0"></div>
+    <div class="dialogActions">
+      <button type="button" id="deleteCategoryNote">삭제</button>
+      <button type="button" id="editCategoryNote">수정</button>
+      <button autofocus>닫기</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="wordNoteDialog" aria-labelledby="wordNoteTitle">
+  <form id="wordNoteForm">
+    <h2 id="wordNoteTitle"></h2>
+    <div id="wordNotePreview" tabindex="0" hidden></div>
+    <textarea id="wordNoteText" aria-label="단어 노트 내용" placeholder="노트 내용" required></textarea>
+    <div class="dialogActions">
+      <button type="button" id="deleteWordNote">삭제</button>
+      <button type="button" id="editWordNote">수정</button>
+      <button type="submit" id="saveWordNote">저장</button>
+      <button type="button" id="closeWordNote">닫기</button>
+    </div>
+  </form>
+</dialog>
+
 <script>
 let bible=null;
 initMenuNotes();
+const openWordNote = initWordNotes();
 fetch('genesis.json')
   .then(r=>r.json())
   .then(data=>{bible=data; renderChapter();})
@@ -96,34 +137,98 @@ fetch('genesis.json')
 function initMenuNotes(){
   const dialog = document.getElementById('categoryDialog');
   const form = document.getElementById('categoryForm');
+  const titleInput = document.getElementById('categoryNoteTitle');
   const memo = document.getElementById('categoryText');
+  const reader = document.getElementById('readNoteDialog');
+  const readTitle = document.getElementById('readNoteTitle');
+  const readText = document.getElementById('readNoteText');
+  const dialogTitle = document.getElementById('categoryTitle');
   let activeMenu;
+  let selectedNote;
+
+  function openEditor(menu, heading, selection = null) {
+    activeMenu = menu;
+    selectedNote = selection;
+    dialogTitle.textContent = heading;
+    titleInput.value = selection ? selection.note.title : '';
+    memo.value = selection ? selection.note.text : '';
+    titleInput.setCustomValidity('');
+    memo.setCustomValidity('');
+    dialog.showModal();
+  }
+
+  document.getElementById('deleteCategoryNote').addEventListener('click', () => {
+    if (!window.confirm('이 메모를 삭제할까요?')) return;
+
+    const {key, notes, list, addToList, addButton} = activeMenu;
+    const remaining = notes.slice();
+    remaining.splice(selectedNote.index, 1);
+    localStorage.setItem(key, JSON.stringify(remaining));
+    notes.splice(selectedNote.index, 1);
+
+    reader.close();
+    selectedNote = null;
+    list.replaceChildren();
+    notes.forEach(addToList);
+    addButton.focus();
+  });
+
+  document.getElementById('editCategoryNote').addEventListener('click', () => {
+    reader.close();
+    openEditor(activeMenu, '메모 수정', selectedNote);
+  });
 
   document.querySelectorAll('.addBtn').forEach(button => {
     const category = button.dataset.category;
     const key = 'menu-notes-' + category;
     const list = button.parentElement.querySelector('.menuNotes');
     const notes = JSON.parse(localStorage.getItem(key) || '[]');
-    const addToList = text => {
+    const menu = {key, notes, list, addToList, addButton: button};
+    function addToList(entry, index) {
+      let note = typeof entry === 'string'
+        ? {title: entry.trim().split(/\r?\n/)[0] || '제목 없음', text: entry}
+        : entry;
       const item = document.createElement('li');
-      item.textContent = text;
+      const openButton = document.createElement('button');
+      openButton.type = 'button';
+      openButton.textContent = note.title;
+      openButton.addEventListener('click', () => {
+        activeMenu = menu;
+        selectedNote = {
+          index,
+          note,
+          update(updatedNote) {
+            note = updatedNote;
+            openButton.textContent = note.title;
+          }
+        };
+        readTitle.textContent = note.title;
+        readText.textContent = note.text;
+        reader.showModal();
+        readTitle.scrollTop = 0;
+        readText.scrollTop = 0;
+      });
+      item.append(openButton);
       list.append(item);
-    };
+    }
     notes.forEach(addToList);
 
     button.addEventListener('click', () => {
-      activeMenu = {key, notes, addToList};
-      document.getElementById('categoryTitle').textContent = button.getAttribute('aria-label');
-      form.reset();
-      memo.setCustomValidity('');
-      dialog.showModal();
+      openEditor(menu, button.getAttribute('aria-label'));
     });
   });
 
+  titleInput.addEventListener('input', () => titleInput.setCustomValidity(''));
   memo.addEventListener('input', () => memo.setCustomValidity(''));
   document.getElementById('cancelCategoryNote').addEventListener('click', () => dialog.close());
   form.addEventListener('submit', event => {
     event.preventDefault();
+    const title = titleInput.value.trim();
+    if (!title) {
+      titleInput.setCustomValidity('메모 제목을 입력하세요.');
+      titleInput.reportValidity();
+      return;
+    }
     const text = memo.value.trim();
     if (!text) {
       memo.setCustomValidity('메모 내용을 입력하세요.');
@@ -131,55 +236,146 @@ function initMenuNotes(){
       return;
     }
     const {key, notes, addToList} = activeMenu;
-    localStorage.setItem(key, JSON.stringify([...notes, text]));
-    notes.push(text);
-    addToList(text);
+    const note = {title, text};
+    const index = selectedNote ? selectedNote.index : notes.length;
+    const updatedNotes = notes.slice();
+    updatedNotes[index] = note;
+    localStorage.setItem(key, JSON.stringify(updatedNotes));
+    notes[index] = note;
+    if (selectedNote) {
+      selectedNote.update(note);
+    } else {
+      addToList(note, index);
+    }
     dialog.close();
   });
 }
-function renderChapter(){
+function initWordNotes() {
+  const dialog = document.getElementById('wordNoteDialog');
+  const form = document.getElementById('wordNoteForm');
+  const title = document.getElementById('wordNoteTitle');
+  const preview = document.getElementById('wordNotePreview');
+  const text = document.getElementById('wordNoteText');
+  const save = document.getElementById('saveWordNote');
+  const edit = document.getElementById('editWordNote');
+  const remove = document.getElementById('deleteWordNote');
+  const close = document.getElementById('closeWordNote');
+  let activeWord;
 
-  const verses = bible.chapters[0];
-  const list=document.getElementById('verseList');
-  list.innerHTML='';
-  verses.forEach((txt,i)=>{
-    const div=document.createElement('div');
-    div.className='verse';
-    const verseNo=`${i+1}`; // only verse number
-    div.innerHTML=`<span><sup class="verseNumber">${verseNo}</sup> ${txt}</span>
-                 <span class="noteBtn" onclick="toggleNote(this,'${verseNo}')">✏️</span>
-                 <div class="noteBox" id="note-${verseNo.replace(':','-')}">
-                   <div class="savedNotes"></div>
-                   <textarea placeholder="새 메모 입력"></textarea>
-                   <button onclick="saveNote('${verseNo}')">저장</button>
-                 </div>
-                 <div class="categoryNotes" id="cat-${verseNo}"></div>`;
-    list.appendChild(div);
-    renderSaved(verseNo);
-    renderCategoryNotes(verseNo);
+  function showMode(editing) {
+    title.textContent = activeWord.word + (editing ? ' · 노트 작성' : ' · 노트');
+    preview.textContent = activeWord.note || '';
+    preview.hidden = editing;
+    text.value = activeWord.note || '';
+    text.hidden = !editing;
+    text.setCustomValidity('');
+    save.hidden = !editing;
+    edit.hidden = editing;
+    remove.hidden = editing;
+    close.textContent = editing ? '취소' : '닫기';
+  }
+
+  edit.addEventListener('click', () => {
+    showMode(true);
+    title.textContent = activeWord.word + ' · 노트 수정';
+    text.focus();
+  });
+  close.addEventListener('click', () => dialog.close());
+  text.addEventListener('input', () => text.setCustomValidity(''));
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    const note = text.value.trim();
+    if (!note) {
+      text.setCustomValidity('노트 내용을 입력하세요.');
+      text.reportValidity();
+      return;
+    }
+    localStorage.setItem(activeWord.key, note);
+    activeWord.update(note);
+    dialog.close();
+  });
+  remove.addEventListener('click', () => {
+    if (!window.confirm('이 노트를 삭제할까요?')) return;
+    localStorage.removeItem(activeWord.key);
+    dialog.close();
+    activeWord.update(null);
+    activeWord.button.focus();
+  });
+
+  return word => {
+    activeWord = word;
+    showMode(!word.note);
+    dialog.showModal();
+    preview.scrollTop = 0;
+    (word.note ? close : text).focus();
+  };
+}
+
+function renderChapter(){
+  const list = document.getElementById('verseList');
+  list.replaceChildren();
+  bible.chapters[0].forEach((text, index) => {
+    const verse = index + 1;
+    const row = document.createElement('div');
+    row.className = 'verse';
+    const number = document.createElement('sup');
+    number.className = 'verseNumber';
+    number.textContent = verse;
+    row.append(number, ' ');
+
+    let wordIndex = 0;
+    for (const part of text.split(/(\s+)/)) {
+      if (!part) continue;
+      if (/^\s+$/.test(part)) {
+        row.append(part);
+        continue;
+      }
+      row.append(createVerseWord(part, 'word-note-genesis-1-' + verse + '-' + wordIndex));
+      wordIndex += 1;
+    }
+    const saved = JSON.parse(localStorage.getItem('note-' + verse) || '[]');
+    if (saved.length) {
+      const details = document.createElement('details');
+      details.className = 'legacyVerseNotes savedNotes';
+      const label = document.createElement('summary');
+      label.textContent = '기존 절 메모';
+      details.append(label, ...saved.map(createNoteRow));
+      row.append(details);
+    }
+    const categories = document.createElement('div');
+    categories.className = 'categoryNotes';
+    categories.id = 'cat-' + verse;
+    row.append(categories);
+    list.append(row);
+    renderCategoryNotes(verse);
   });
 }
-function toggleNote(btn,verse){
-  const box=btn.nextElementSibling;box.style.display=box.style.display==='block'?'none':'block';
+
+function createVerseWord(word, key) {
+  const wrapper = document.createElement('span');
+  wrapper.className = 'verseWord';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'wordButton';
+  button.textContent = word;
+  const info = document.createElement('button');
+  info.type = 'button';
+  info.className = 'wordInfo';
+  info.textContent = 'ⓘ';
+  info.setAttribute('aria-label', word + ' 노트 보기');
+  const entry = {word, key, button, note: localStorage.getItem(key), update};
+  function update(note) {
+    entry.note = note;
+    info.hidden = !note;
+    info.title = note || '';
+  }
+  button.addEventListener('click', () => openWordNote(entry));
+  info.addEventListener('click', () => openWordNote(entry));
+  wrapper.append(button, info);
+  update(entry.note);
+  return wrapper;
 }
-function saveNote(verse){
-  const box=document.getElementById('note-'+verse.replace(':','-'));
-  const txt=box.querySelector('textarea').value.trim();
-  if(!txt) return;
-  const key=`note-${verse}`;
-  const existing=JSON.parse(localStorage.getItem(key)||'[]');
-  const now=new Date().toLocaleString();
-  existing.push({time:now,text:txt});
-  localStorage.setItem(key,JSON.stringify(existing));
-  box.querySelector('textarea').value='';
-  renderSaved(verse);
-}
-function renderSaved(verse){
-  const key=`note-${verse}`;
-  const notes=JSON.parse(localStorage.getItem(key)||'[]');
-  const div=document.getElementById('note-'+verse.replace(':','-')).querySelector('.savedNotes');
-  div.replaceChildren(...notes.map(createNoteRow));
-}
+
 function createNoteRow(note) {
   const row = document.createElement('div');
   const time = document.createElement('small');
