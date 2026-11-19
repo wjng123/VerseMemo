@@ -339,7 +339,29 @@ function renderChapter(){
       details.className = 'legacyVerseNotes savedNotes';
       const label = document.createElement('summary');
       label.textContent = '기존 절 메모';
-      details.append(label, ...saved.map(createNoteRow));
+      details.append(label);
+      saved.forEach(note => {
+        const noteRow = createNoteRow(note);
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.textContent = '삭제';
+        remove.addEventListener('click', () => {
+          if (!window.confirm('이 메모를 삭제할까요?')) return;
+          const position = saved.indexOf(note);
+          const remaining = saved.filter((_, index) => index !== position);
+          const key = 'note-' + verse;
+          if (remaining.length) {
+            localStorage.setItem(key, JSON.stringify(remaining));
+          } else {
+            localStorage.removeItem(key);
+          }
+          saved.splice(position, 1);
+          noteRow.remove();
+          if (!saved.length) details.remove();
+        });
+        noteRow.append(' ', remove);
+        details.append(noteRow);
+      });
       row.append(details);
     }
     const categories = document.createElement('div');
@@ -402,3 +424,4 @@ function renderCategoryNotes(verse) {
 </script>
 </body>
 </html>
+
