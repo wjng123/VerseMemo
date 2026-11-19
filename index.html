@@ -7,7 +7,7 @@
   body {font-family:Arial,Helvetica,sans-serif; margin:0; display:flex; flex-direction:column; height:100vh;}
   /* header removed */
   header select {margin-left:1rem; padding:0.2rem;}
-  #verseList {flex:1; overflow:auto; padding:1rem; margin-left:190px;}
+  #verseList {flex:1; overflow:auto; padding:3rem 1rem 1rem; margin-left:190px;}
   #sideMenu {
     position:fixed;
     left:0;
@@ -30,6 +30,7 @@
     z-index:1000;
   }
   .menuItem {margin-bottom:1rem;}
+  #sideMenu > .menuItem:first-child {min-height:max(0px, calc(25vh - 4rem));}
   .menuNotes {list-style:none; margin:0.45rem 0 0; padding:0;}
   .menuNotes li {background:#f4f6f8; border-radius:0.3rem; margin-top:0.35rem; padding:0.45rem; white-space:pre-wrap; overflow-wrap:anywhere;}
   .addBtn {
