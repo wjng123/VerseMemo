@@ -12,7 +12,8 @@
     position:fixed;
     left:0;
     top:2rem;
-    height:100%;
+    bottom:0;
+    overflow:auto;
     width:180px;
     background:rgba(255,255,255,0.2);
     padding:1rem;
@@ -29,6 +30,8 @@
     z-index:1000;
   }
   .menuItem {margin-bottom:1rem;}
+  .menuNotes {list-style:none; margin:0.45rem 0 0; padding:0;}
+  .menuNotes li {background:#f4f6f8; border-radius:0.3rem; margin-top:0.35rem; padding:0.45rem; white-space:pre-wrap; overflow-wrap:anywhere;}
   .addBtn {
     font-size:1.1rem;
     font-weight:500;
@@ -39,9 +42,21 @@
     padding:0;
     line-height:1;
   }
-}
 
-
+  #categoryDialog {
+    box-sizing:border-box;
+    width:min(calc(100vw - 2rem), max(50vw, 22rem));
+    height:min(calc(100dvh - 2rem), max(50dvh, 16rem));
+    padding:1rem;
+    border:1px solid #ddd;
+    border-radius:0.5rem;
+  }
+  #categoryDialog::backdrop {background:rgba(0,0,0,0.35);}
+  #categoryForm {display:flex; flex-direction:column; height:100%;}
+  #categoryTitle {margin:0 0 0.75rem;}
+  #categoryForm textarea {flex:1; min-height:0; width:100%; box-sizing:border-box; resize:none; font:inherit;}
+  .dialogActions {display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.75rem;}
+  .savedNotes div, .categoryNotes div {white-space:pre-wrap; overflow-wrap:anywhere;}
   .verse {position:relative; margin-bottom:0.8rem; line-height:1.4;}
   .noteBtn {position:absolute; right:0; top:0; cursor:pointer; color:#4A90E2;}
   .noteBox {display:none; margin-top:0.4rem; border:1px solid #ddd; padding:0.4rem;}
@@ -52,52 +67,77 @@
 <body>
 <div id="logo">VerseMemo</div>
 <nav id="sideMenu">
-  <div class="menuItem"><span>QT</span> <button class="addBtn" data-category="QT">+</button></div>
-  <div class="menuItem"><span>설교메모</span> <button class="addBtn" data-category="설교메모">+</button></div>
+  <div class="menuItem"><span>QT</span> <button class="addBtn" type="button" data-category="QT" aria-label="QT 메모 추가" aria-controls="categoryDialog">+</button><ul class="menuNotes" id="qtNotes"></ul></div>
+  <div class="menuItem"><span>설교메모</span> <button class="addBtn" type="button" data-category="설교메모" aria-label="설교메모 추가" aria-controls="categoryDialog">+</button><ul class="menuNotes" id="sermonNotes"></ul></div>
 </nav>
-
 <div id="verseList"></div>
+
+<dialog id="categoryDialog" aria-labelledby="categoryTitle">
+  <form id="categoryForm">
+    <h2 id="categoryTitle"></h2>
+    <textarea id="categoryText" aria-label="메모 내용" required autofocus></textarea>
+    <div class="dialogActions">
+      <button type="button" id="cancelCategoryNote">취소</button>
+      <button type="submit">저장</button>
+    </div>
+  </form>
+</dialog>
+
+
 <script>
 let bible=null;
-let lastVerse = null;
+initMenuNotes();
 fetch('genesis.json')
   .then(r=>r.json())
-  .then(data=>{bible=data; init();})
+  .then(data=>{bible=data; renderChapter();})
   .catch(()=>alert('genesis.json 를 찾을 수 없습니다.'));
-function init(){
-  const sel=document.getElementById('chapterSelect');
-  bible.chapters.forEach((c,i)=>{sel.append(new Option(`第 ${i+1} 장`, i));});
-  sel.addEventListener('change',renderChapter);
-  renderChapter();
-  // Set up category add buttons
-  document.querySelectorAll('.addBtn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (!lastVerse) { alert('먼저 절을 선택하세요.'); return; }
-      const category = btn.dataset.category;
-      // Remove existing input box if present
-      const existing = btn.parentElement.querySelector('.categoryBox');
-      if (existing) { existing.remove(); return; }
-      const box = document.createElement('div');
-      box.className = 'categoryBox';
-      box.innerHTML = `
-        <textarea placeholder="${category} 메모 입력" style="width:100%;height:3rem;"></textarea>
-        <button>저장</button>`;
-      btn.parentElement.appendChild(box);
-      const textarea = box.querySelector('textarea');
-      const saveBtn = box.querySelector('button');
-      saveBtn.addEventListener('click', () => {
-        const txt = textarea.value.trim();
-        if (txt) {
-          saveCategoryNote(lastVerse, category, txt);
-          box.remove();
-        }
-      });
+function initMenuNotes(){
+  const dialog = document.getElementById('categoryDialog');
+  const form = document.getElementById('categoryForm');
+  const memo = document.getElementById('categoryText');
+  let activeMenu;
+
+  document.querySelectorAll('.addBtn').forEach(button => {
+    const category = button.dataset.category;
+    const key = 'menu-notes-' + category;
+    const list = button.parentElement.querySelector('.menuNotes');
+    const notes = JSON.parse(localStorage.getItem(key) || '[]');
+    const addToList = text => {
+      const item = document.createElement('li');
+      item.textContent = text;
+      list.append(item);
+    };
+    notes.forEach(addToList);
+
+    button.addEventListener('click', () => {
+      activeMenu = {key, notes, addToList};
+      document.getElementById('categoryTitle').textContent = button.getAttribute('aria-label');
+      form.reset();
+      memo.setCustomValidity('');
+      dialog.showModal();
     });
+  });
+
+  memo.addEventListener('input', () => memo.setCustomValidity(''));
+  document.getElementById('cancelCategoryNote').addEventListener('click', () => dialog.close());
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    const text = memo.value.trim();
+    if (!text) {
+      memo.setCustomValidity('메모 내용을 입력하세요.');
+      memo.reportValidity();
+      return;
+    }
+    const {key, notes, addToList} = activeMenu;
+    localStorage.setItem(key, JSON.stringify([...notes, text]));
+    notes.push(text);
+    addToList(text);
+    dialog.close();
   });
 }
 function renderChapter(){
-  const idx=document.getElementById('chapterSelect').value;
-  const verses=bible.chapters[idx];
+
+  const verses = bible.chapters[0];
   const list=document.getElementById('verseList');
   list.innerHTML='';
   verses.forEach((txt,i)=>{
@@ -113,12 +153,11 @@ function renderChapter(){
                  </div>
                  <div class="categoryNotes" id="cat-${verseNo}"></div>`;
     list.appendChild(div);
-    loadNotes(verseNo);
-    lastVerse = verseNo; // track last rendered verse for add buttons
+    renderSaved(verseNo);
+    renderCategoryNotes(verseNo);
   });
 }
 function toggleNote(btn,verse){
-  lastVerse = verse;
   const box=btn.nextElementSibling;box.style.display=box.style.display==='block'?'none':'block';
 }
 function saveNote(verse){
@@ -133,41 +172,35 @@ function saveNote(verse){
   box.querySelector('textarea').value='';
   renderSaved(verse);
 }
-function loadNotes(verse){renderSaved(verse);}
 function renderSaved(verse){
   const key=`note-${verse}`;
   const notes=JSON.parse(localStorage.getItem(key)||'[]');
   const div=document.getElementById('note-'+verse.replace(':','-')).querySelector('.savedNotes');
-  div.innerHTML=notes.map(n=>`<div><small>${n.time}</small> ${n.text}</div>`).join('');
+  div.replaceChildren(...notes.map(createNoteRow));
 }
-function saveCategoryNote(verse, category, text) {
-  const key = `note-${verse}-${category}`;
-  const existing = JSON.parse(localStorage.getItem(key) || '[]');
-  const now = new Date().toLocaleString();
-  existing.push({time: now, text});
-  localStorage.setItem(key, JSON.stringify(existing));
-  renderCategoryNotes(verse);
-}
-function loadCategoryNotes(verse) {
-  renderCategoryNotes(verse);
+function createNoteRow(note) {
+  const row = document.createElement('div');
+  const time = document.createElement('small');
+  time.textContent = note.time;
+  row.append(time, ' ' + note.text);
+  return row;
 }
 function renderCategoryNotes(verse) {
   const container = document.getElementById('cat-' + verse);
   if (!container) return;
   const categories = ['QT', '설교메모'];
-  container.innerHTML = categories.map(cat => {
-    const key = `note-${verse}-${cat}`;
-    const notes = JSON.parse(localStorage.getItem(key) || '[]');
-    if (notes.length===0) return '';
-    return `<div class="cat-${cat}"><strong>${cat}:</strong> ` + notes.map(n => `<span><small>${n.time}</small> ${n.text}</span>`).join('<br>') + `</div>`;
-  }).join('');
+  container.replaceChildren();
+  categories.forEach(category => {
+    const notes = JSON.parse(localStorage.getItem(`note-${verse}-${category}`) || '[]');
+    if (notes.length === 0) return;
+    const section = document.createElement('div');
+    section.className = 'cat-' + category;
+    const title = document.createElement('strong');
+    title.textContent = category + ':';
+    section.append(title, ...notes.map(createNoteRow));
+    container.append(section);
+  });
 }
-// Hook into loadNotes to also load category notes
-const originalLoadNotes = loadNotes;
-loadNotes = function(verse) {
-  originalLoadNotes(verse);
-  loadCategoryNotes(verse);
-};
 </script>
 </body>
 </html>
